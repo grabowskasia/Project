@@ -83,3 +83,52 @@ def compute_group_stats(patient_data, numeric_column, grouping_column):
     ).round(2)
     grouped_result.columns = ["Średnia", "Mediana", "Odch. std.", "Min", "Max", "Liczba"]
     return grouped_result.reset_index()
+
+def draw_histogram(patient_data, column_name):
+    # Rysuje histogram z rozkładem danych danej kolumny
+
+    figure, axis = plt.subplots(figsize=(8, 4))
+    axis.hist(patient_data[column_name].dropna(), bins=30,
+              edgecolor="black", alpha=0.7, color="#4C8BF5")
+    axis.set_xlabel(column_name)
+    axis.set_ylabel("Liczba pacjentów")
+    axis.set_title(f"Histogram – {column_name}")
+    figure.tight_layout()
+    return figure
+
+def draw_scatter(patient_data, x_column, y_column):
+    # Rysuje wykres rozrzutu dwóch kolumn — każdy punkt to pacjent, kolorowany wg płci.
+
+    figure, axis = plt.subplots(figsize=(8, 4))
+
+    if "Gender" in patient_data.columns:
+        gender_colors = patient_data["Gender"].map({"Male": "#4C8BF5", "Female": "#F54C7A"})
+        axis.scatter(patient_data[x_column], patient_data[y_column],
+                     alpha=0.4, s=12, c=gender_colors)
+        male_marker = plt.Line2D([0], [0], marker='o', color='w',
+                                 markerfacecolor='#4C8BF5', label='Male', markersize=8)
+        female_marker = plt.Line2D([0], [0], marker='o', color='w',
+                                   markerfacecolor='#F54C7A', label='Female', markersize=8)
+        axis.legend(handles=[male_marker, female_marker])
+    else:
+        axis.scatter(patient_data[x_column], patient_data[y_column],
+                     alpha=0.4, s=12, color="#4C8BF5")
+
+    axis.set_xlabel(x_column)
+    axis.set_ylabel(y_column)
+    axis.set_title(f"{x_column} vs {y_column}")
+    figure.tight_layout()
+    return figure
+
+def draw_gender_pie(patient_data):
+    # Rysuje wykres kołowy pokazujący rozkład płci
+
+    figure, axis = plt.subplots(figsize=(6, 4))
+    gender_counts = patient_data["Gender"].value_counts()
+    axis.pie(gender_counts, labels=gender_counts.index,
+             autopct="%1.1f%%", colors=["#4C8BF5", "#F54C7A"], startangle=90)
+    axis.set_title("Rozkład płci")
+    figure.tight_layout()
+    return figure
+
+
