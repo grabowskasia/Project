@@ -9,6 +9,8 @@ import streamlit as st
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 
+#Poprawic komentarze do funkcji
+
 # Dane które nas interesują
 COLUMNS_TO_KEEP = [
     "Patient ID", "Age", "Gender",
@@ -96,6 +98,26 @@ def draw_histogram(patient_data, column_name):
     figure.tight_layout()
     return figure
 
+def draw_boxplot(patient_data, column_name):
+    # Rysuje boxplot
+
+    figure, axis = plt.subplots(figsize=(8, 4))
+    if "Gender" in patient_data.columns:
+        male_values = patient_data[patient_data["Gender"] == "Male"][column_name].dropna()
+        female_values = patient_data[patient_data["Gender"] == "Female"][column_name].dropna()
+        boxplot_result = axis.boxplot(
+            [male_values, female_values],
+            labels=["Male", "Female"], patch_artist=True,
+        )
+        boxplot_result["boxes"][0].set_facecolor("#4C8BF5")
+        boxplot_result["boxes"][1].set_facecolor("#F54C7A")
+    else:
+        axis.boxplot(patient_data[column_name].dropna(), patch_artist=True)
+    axis.set_ylabel(column_name)
+    axis.set_title(f"Boxplot – {column_name}")
+    figure.tight_layout()
+    return figure
+
 def draw_scatter(patient_data, x_column, y_column):
     # Rysuje wykres rozrzutu dwóch kolumn — każdy punkt to pacjent, kolorowany wg płci.
 
@@ -131,4 +153,31 @@ def draw_gender_pie(patient_data):
     figure.tight_layout()
     return figure
 
+def draw_group_comparison(patient_data, grouping_column, value_column):
+    # Rysuje wykres porównawczy miedzy grupami
 
+    figure, axis = plt.subplots(figsize=(8, 4))
+    unique_groups = sorted(patient_data[grouping_column].dropna().unique(), key=str)
+    group_values = [
+        patient_data[patient_data[grouping_column] == group][value_column].dropna().values
+        for group in unique_groups
+    ]
+    group_labels = [str(group) for group in unique_groups]
+
+    color_palette = ["#4C8BF5", "#F54C7A", "#FFC107", "#4CAF50", "#9C27B0"]
+    boxplot_result = axis.boxplot(group_values, labels=group_labels, patch_artist=True)
+    for index, box in enumerate(boxplot_result["boxes"]):
+        box.set_facecolor(color_palette[index % len(color_palette)])
+
+    axis.set_ylabel(value_column)
+    axis.set_title(f"Porównanie: {value_column} wg {grouping_column}")
+    figure.tight_layout()
+    return figure
+
+def save_chart_to_png(figure, filename):
+    # Zapisuje figure matplotlib do png
+
+    image_path = os.path.join(tempfile.gettempdir(), filename)
+    figure.savefig(image_path, dpi=150)
+    plt.close(figure)
+    return image_path
