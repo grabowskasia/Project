@@ -256,3 +256,152 @@ def apply_filters(patient_data, filters):
                 (patient_data[column_name] <= max_value)
             ]
     return patient_data
+
+
+def main():
+    # Główna funckaj odpowiadajaca za interfejs streamlit
+
+    st.set_page_config(page_title="Medical Data Analyzer", layout="wide")
+    st.title("Medical Patient Data Analyzer")
+
+    uploaded_file = st.file_uploader("Wczytaj plik CSV z danymi pacjentów", type=["csv"])
+
+    if uploaded_file is None:
+        st.info("Załaduj plik CSV, aby rozpocząć analizę.")
+        return
+
+    patient_data = load_csv(uploaded_file)
+    st.success(f"Wczytano {len(patient_data)} rekordów.")
+
+    st.sidebar.header("Filtry")
+
+    gender_options = ["Wszystkie"] + sorted(patient_data["Gender"].dropna().unique().tolist())
+    selected_gender = st.sidebar.selectbox("Płeć", gender_options)
+    if selected_gender != "Wszystkie":
+        patient_data = patient_data[patient_data["Gender"] == selected_gender]
+
+    filter_ranges = {}
+
+    age_range = st.sidebar.slider(
+        "Wiek", 0, 120,
+        (int(patient_data["Age"].min()), int(patient_data["Age"].max()))
+    )
+    filter_ranges["Age"] = age_range
+
+    heart_rate_range = st.sidebar.slider(
+        "Tętno (Heart Rate)", 0, 300,
+        (int(patient_data["Heart Rate"].min()), int(patient_data["Heart Rate"].max()))
+    )
+    filter_ranges["Heart Rate"] = heart_rate_range
+
+    respiratory_range = st.sidebar.slider(
+        "Oddechy (Respiratory Rate)", 0, 60,
+        (int(patient_data["Respiratory Rate"].min()), int(patient_data["Respiratory Rate"].max()))
+    )
+    filter_ranges["Respiratory Rate"] = respiratory_range
+
+    systolic_range = st.sidebar.slider(
+        "Ciśnienie skurczowe", 0, 300,
+        (int(patient_data["Systolic Blood Pressure"].min()),
+         int(patient_data["Systolic Blood Pressure"].max()))
+    )
+    filter_ranges["Systolic Blood Pressure"] = systolic_range
+
+    diastolic_range = st.sidebar.slider(
+        "Ciśnienie rozkurczowe", 0, 200,
+        (int(patient_data["Diastolic Blood Pressure"].min()),
+         int(patient_data["Diastolic Blood Pressure"].max()))
+    )
+    filter_ranges["Diastolic Blood Pressure"] = diastolic_range
+
+    if "BMI" in patient_data.columns:
+        bmi_range = st.sidebar.slider(
+            "BMI", 0.0, 100.0,
+            (float(patient_data["BMI"].min()), float(patient_data["BMI"].max())),
+            step=0.5,
+        )
+        filter_ranges["BMI"] = bmi_range
+
+    filtered_data = apply_filters(patient_data, filter_ranges)
+    st.sidebar.metric("Liczba rekordów", f"{len(filtered_data)} / {len(patient_data)}")
+
+    tab_data, tab_stats, tab_charts, tab_compare, tab_export = st.tabs(
+        ["Dane", "Statystyki", "Wykresy", "Porównanie grup", "Eksport"]
+    )
+
+    with tab_data:
+        st.subheader(f"Tabela danych ({len(filtered_data)} rekordów)")
+        st.dataframe(filtered_data, use_container_width=True, height=500)
+
+    with tab_stats:
+        st.subheader("Statystyki opisowe")
+        stats_column = st.selectbox("Kolumna", NUMERIC_COLUMNS, key="stats_col")
+        st.dataframe(compute_stats(filtered_data, stats_column), use_container_width=True)
+
+        st.subheader("Statystyki grupowane")
+        col_group, col_value = st.columns(2)
+        with col_group:
+            grouping_column = st.selectbox("Grupuj wg", ["Gender", "Grupa wiekowa"])
+        with col_value:
+            group_value_column = st.selectbox("Kolumna", NUMERIC_COLUMNS, key="group_col")
+
+        if grouping_column in filtered_data.columns:
+            st.dataframe(
+                compute_group_stats(filtered_data, group_value_column, grouping_column),
+                use_container_width=True,
+            )
+
+    with tab_charts:
+        chart_type = st.selectbox("Typ wykresu", [
+            "Histogram", "Wykres rozrzutu", "Boxplot",
+            "Rozkład płci", "Tętno vs Ciśnienie",
+        ])
+
+        col_x_select, col_y_select = st.columns(2)
+        with col_x_select:
+            x_column = st.selectbox("Kolumna X", NUMERIC_COLUMNS, key="x_col")
+        with col_y_select:
+            y_column = st.selectbox("Kolumna Y", NUMERIC_COLUMNS, index=1, key="y_col")
+
+        if chart_type == "Histogram":
+            st.pyplot(draw_histogram(filtered_data, x_column))
+        elif chart_type == "Wykres rozrzutu":
+            st.pyplot(draw_scatter(filtered_data, x_column, y_column))
+        elif chart_type == "Boxplot":
+            st.pyplot(draw_boxplot(filtered_data, x_column))
+        elif chart_type == "Rozkład płci" and "Gender" in filtered_data.columns:
+            st.pyplot(draw_gender_pie(filtered_data))
+        elif chart_type == "Tętno vs Ciśnienie":
+            st.pyplot(draw_scatter(filtered_data, "Heart Rate", "Systolic Blood Pressure"))
+
+    with tab_compare:
+        col_cmp_group, col_cmp_value = st.columns(2)
+        with col_cmp_group:
+            compare_grouping = st.selectbox("Porównaj wg", ["Gender", "Grupa wiekowa"], key="cmp_grp")
+        with col_cmp_value:
+            compare_value = st.selectbox("Parametr", NUMERIC_COLUMNS, key="cmp_val")
+
+        if compare_grouping in filtered_data.columns:
+            st.pyplot(draw_group_comparison(filtered_data, compare_grouping, compare_value))
+
+    with tab_export:
+        st.subheader("Eksport danych")
+
+        csv_bytes = filtered_data.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            label="Pobierz filtrowane dane (CSV)",
+            data=csv_bytes,
+            file_name="filtered_data.csv",
+            mime="text/csv",
+        )
+
+        st.subheader("Eksport raportu PDF")
+        if st.button("Generuj raport PDF"):
+            with st.spinner("Generowanie raportu..."):
+                pdf_bytes = generate_pdf(filtered_data)
+            st.download_button(
+                label="Pobierz raport PDF",
+                data=pdf_bytes,
+                file_name="raport.pdf",
+                mime="application/pdf",
+            )
