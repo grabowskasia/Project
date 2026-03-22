@@ -22,9 +22,32 @@ COLUMNS_TO_KEEP = [
 NUMERIC_COLUMNS = [
     "Age", "Weight (kg)", "Height (m)",
     "Heart Rate", "Respiratory Rate",
-    "Systolic Blood Pressure", "Diastolic Blood Pressure",
+    "Systolic Blood Pressure", "Diastolic Blood Pressure", "BMI"
 ]
 
+SLIDER_CONFIG = {
+    "Age":                      ("Wiek", 0, 120),
+    "Heart Rate":               ("Tętno", 0, 300),
+    "Respiratory Rate":         ("Częstość oddechów", 0, 60),
+    "Systolic Blood Pressure":  ("Ciśnienie skurczowe", 0, 300),
+    "Diastolic Blood Pressure": ("Ciśnienie rozkurczowe", 0, 200),
+}
+
+POLISH_NAMES = {
+    "Patient ID":               "ID pacjenta",
+    "Age":                      "Wiek",
+    "Gender":                   "Płeć",
+    "Weight (kg)":              "Waga (kg)",
+    "Height (m)":               "Wzrost (m)",
+    "Heart Rate":               "Tętno",
+    "Respiratory Rate":         "Częstość oddechów",
+    "Systolic Blood Pressure":  "Ciśnienie skurczowe",
+    "Diastolic Blood Pressure": "Ciśnienie rozkurczowe",
+    "BMI":                      "BMI",
+}
+
+def polish(column_name):
+    return POLISH_NAMES.get(column_name, column_name)
 
 def load_csv(uploaded_file):
     # Wczytuje dane z pliku CSV, wybiera dane z "COLUMNS_TO_KEEP"
@@ -33,7 +56,6 @@ def load_csv(uploaded_file):
     patient_data = pd.read_csv(uploaded_file)
     available_columns = [col for col in COLUMNS_TO_KEEP if col in patient_data.columns]
     patient_data = patient_data[available_columns].copy()
-    patient_data.dropna(subset=available_columns, inplace=True)
 
     # Sprawdzanie obecności duplikatów
     if "Patient ID" in patient_data.columns:
@@ -55,6 +77,9 @@ def load_csv(uploaded_file):
         )
 
     return patient_data
+
+def get_available_numeric_columns(patient_data):
+    return [col for col in NUMERIC_COLUMNS if col in patient_data.columns]
 
 def compute_stats(patient_data, column_name):
     # Oblicza statystyki dla danej kolumny, usuwa niepoprawne dane
@@ -205,9 +230,7 @@ def generate_pdf(patient_data):
     ))
     pdf_elements.append(Spacer(1, 0.5 * cm))
 
-    for column_name in NUMERIC_COLUMNS:
-        if column_name not in patient_data.columns:
-            continue
+    for column_name in get_available_numeric_columns(patient_data):
         stats_result = compute_stats(patient_data, column_name)
         pdf_elements.append(Paragraph(f"<b>{column_name}</b>", pdf_styles["Heading3"]))
         table_rows = [["Miara", "Wartość"]] + stats_result.values.tolist()
@@ -252,48 +275,30 @@ def apply_filters(patient_data, filters):
     for column_name, (min_value, max_value) in filters.items():
         if column_name in patient_data.columns:
             patient_data = patient_data[
-                (patient_data[column_name] >= min_value) &
-                (patient_data[column_name] <= max_value)
-            ]
+                ((patient_data[column_name] >= min_value) &
+                 (patient_data[column_name] <= max_value)) |
+                patient_data[column_name].isna()
+                ]
     return patient_data
 
 def build_sidebar_filters(patient_data):
     # Buduje panel boczny z filtrami (płeć + suwaki zakresowe) i zwraca przefiltrowane dane.
     st.sidebar.header("Filtry")
 
-    gender_options = ["Wszystkie"] + sorted(patient_data["Gender"].dropna().unique().tolist())
-    selected_gender = st.sidebar.selectbox("Płeć", gender_options)
-    if selected_gender != "Wszystkie":
-        patient_data = patient_data[patient_data["Gender"] == selected_gender]
+    if "Gender" in patient_data.columns:
+        gender_options = ["Wszystkie"] + sorted(patient_data["Gender"].dropna().unique().tolist())
+        selected_gender = st.sidebar.selectbox("Płeć", gender_options)
+        if selected_gender != "Wszystkie":
+            patient_data = patient_data[patient_data["Gender"] == selected_gender]
 
     filter_ranges = {}
 
-    filter_ranges["Age"] = st.sidebar.slider(
-        "Wiek", 0, 120,
-        (int(patient_data["Age"].min()), int(patient_data["Age"].max()))
-    )
-
-    filter_ranges["Heart Rate"] = st.sidebar.slider(
-        "Tętno (Heart Rate)", 0, 300,
-        (int(patient_data["Heart Rate"].min()), int(patient_data["Heart Rate"].max()))
-    )
-
-    filter_ranges["Respiratory Rate"] = st.sidebar.slider(
-        "Oddechy (Respiratory Rate)", 0, 60,
-        (int(patient_data["Respiratory Rate"].min()), int(patient_data["Respiratory Rate"].max()))
-    )
-
-    filter_ranges["Systolic Blood Pressure"] = st.sidebar.slider(
-        "Ciśnienie skurczowe", 0, 300,
-        (int(patient_data["Systolic Blood Pressure"].min()),
-         int(patient_data["Systolic Blood Pressure"].max()))
-    )
-
-    filter_ranges["Diastolic Blood Pressure"] = st.sidebar.slider(
-        "Ciśnienie rozkurczowe", 0, 200,
-        (int(patient_data["Diastolic Blood Pressure"].min()),
-         int(patient_data["Diastolic Blood Pressure"].max()))
-    )
+    for column_name, (label, min_val, max_val) in SLIDER_CONFIG.items():
+        if column_name in patient_data.columns:
+            filter_ranges[column_name] = st.sidebar.slider(
+                label, min_val, max_val,
+                (int(patient_data[column_name].min()), int(patient_data[column_name].max()))
+            )
 
     if "BMI" in patient_data.columns:
         filter_ranges["BMI"] = st.sidebar.slider(
@@ -315,36 +320,57 @@ def show_tab_data(filtered_data):
 
 def show_tab_stats(filtered_data):
     # Wyświetla statystyki opisowe i grupowane dla wybranej kolumny.
+    available_columns = get_available_numeric_columns(filtered_data)
+
     st.subheader("Statystyki opisowe")
-    stats_column = st.selectbox("Kolumna", NUMERIC_COLUMNS, key="stats_col")
+    stats_column = st.selectbox("Kolumna", available_columns,
+                                format_func=polish, key="stats_col")
     st.dataframe(compute_stats(filtered_data, stats_column), use_container_width=True)
 
     st.subheader("Statystyki grupowane")
-    col_group, col_value = st.columns(2)
-    with col_group:
-        grouping_column = st.selectbox("Grupuj wg", ["Gender", "Grupa wiekowa"])
-    with col_value:
-        group_value_column = st.selectbox("Kolumna", NUMERIC_COLUMNS, key="group_col")
 
-    if grouping_column in filtered_data.columns:
+    grouping_options = []
+    if "Gender" in filtered_data.columns:
+        grouping_options.append("Gender")
+    if "Grupa wiekowa" in filtered_data.columns:
+        grouping_options.append("Grupa wiekowa")
+
+    if grouping_options:
+        col_group, col_value = st.columns(2)
+        with col_group:
+            grouping_column = st.selectbox("Grupuj wg", grouping_options,
+                                           format_func=polish)
+        with col_value:
+            group_value_column = st.selectbox("Kolumna", available_columns,
+                                              format_func=polish, key="group_col")
+
         st.dataframe(
             compute_group_stats(filtered_data, group_value_column, grouping_column),
             use_container_width=True,
         )
-
+    else:
+        st.warning("Brak kolumn do grupowania (Gender lub Grupa wiekowa).")
 
 def show_tab_charts(filtered_data):
     # Wyświetla wybrany typ wykresu (histogram, scatter, boxplot, pie, tętno vs ciśnienie).
-    chart_type = st.selectbox("Typ wykresu", [
-        "Histogram", "Wykres rozrzutu", "Boxplot",
-        "Rozkład płci"
-    ])
+    available_columns = get_available_numeric_columns(filtered_data)
+
+    chart_options = ["Histogram", "Wykres rozrzutu", "Boxplot"]
+    if "Gender" in filtered_data.columns:
+        chart_options.append("Rozkład płci")
+    if "Heart Rate" in filtered_data.columns and "Systolic Blood Pressure" in filtered_data.columns:
+        chart_options.append("Tętno vs Ciśnienie")
+
+    chart_type = st.selectbox("Typ wykresu", chart_options)
 
     col_x_select, col_y_select = st.columns(2)
     with col_x_select:
-        x_column = st.selectbox("Kolumna X", NUMERIC_COLUMNS, key="x_col")
+        x_column = st.selectbox("Kolumna X", available_columns,
+                                format_func=polish, key="x_col")
     with col_y_select:
-        y_column = st.selectbox("Kolumna Y", NUMERIC_COLUMNS, index=1, key="y_col")
+        y_column = st.selectbox("Kolumna Y", available_columns,
+                                format_func=polish,
+                                index=min(1, len(available_columns) - 1), key="y_col")
 
     if chart_type == "Histogram":
         st.pyplot(draw_histogram(filtered_data, x_column))
@@ -352,20 +378,32 @@ def show_tab_charts(filtered_data):
         st.pyplot(draw_scatter(filtered_data, x_column, y_column))
     elif chart_type == "Boxplot":
         st.pyplot(draw_boxplot(filtered_data, x_column))
-    elif chart_type == "Rozkład płci" and "Gender" in filtered_data.columns:
+    elif chart_type == "Rozkład płci":
         st.pyplot(draw_gender_pie(filtered_data))
 
 
 def show_tab_compare(filtered_data):
     # Wyświetla porównanie grup (boxploty obok siebie wg płci lub grupy wiekowej).
-    col_cmp_group, col_cmp_value = st.columns(2)
-    with col_cmp_group:
-        compare_grouping = st.selectbox("Porównaj wg", ["Gender", "Grupa wiekowa"], key="cmp_grp")
-    with col_cmp_value:
-        compare_value = st.selectbox("Parametr", NUMERIC_COLUMNS, key="cmp_val")
+    available_columns = get_available_numeric_columns(filtered_data)
 
-    if compare_grouping in filtered_data.columns:
+    grouping_options = []
+    if "Gender" in filtered_data.columns:
+        grouping_options.append("Gender")
+    if "Grupa wiekowa" in filtered_data.columns:
+        grouping_options.append("Grupa wiekowa")
+
+    if grouping_options:
+        col_cmp_group, col_cmp_value = st.columns(2)
+        with col_cmp_group:
+            compare_grouping = st.selectbox("Porównaj wg", grouping_options,
+                                            format_func=polish, key="cmp_grp")
+        with col_cmp_value:
+            compare_value = st.selectbox("Parametr", available_columns,
+                                         format_func=polish, key="cmp_val")
+
         st.pyplot(draw_group_comparison(filtered_data, compare_grouping, compare_value))
+    else:
+        st.warning("Brak kolumn do grupowania (Gender lub Grupa wiekowa).")
 
 
 def show_tab_export(filtered_data):
@@ -404,6 +442,11 @@ def main():
         return
 
     patient_data = load_csv(uploaded_file)
+
+    if patient_data.empty:
+        st.error("Plik CSV jest pusty lub nie zawiera rozpoznanych kolumn.")
+        return
+
     st.success(f"Wczytano {len(patient_data)} rekordów.")
 
     filtered_data = build_sidebar_filters(patient_data)
