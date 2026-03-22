@@ -9,8 +9,6 @@ import streamlit as st
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 
-#Poprawic komentarze do funkcji
-
 # Dane które nas interesują
 COLUMNS_TO_KEEP = [
     "Patient ID", "Age", "Gender",
@@ -49,26 +47,38 @@ POLISH_NAMES = {
 def polish(column_name):
     return POLISH_NAMES.get(column_name, column_name)
 
+def strip_diacritics(text):
+    # Usuwa polskie znaki
+    replacements = {
+        "ą": "a", "ć": "c", "ę": "e", "ł": "l", "ń": "n",
+        "ó": "o", "ś": "s", "ź": "z", "ż": "z",
+        "Ą": "A", "Ć": "C", "Ę": "E", "Ł": "L", "Ń": "N",
+        "Ó": "O", "Ś": "S", "Ź": "Z", "Ż": "Z",
+    }
+    for original, replacement in replacements.items():
+        text = text.replace(original, replacement)
+    return text
+
 def load_csv(uploaded_file):
     # Wczytuje dane z pliku CSV, wybiera dane z "COLUMNS_TO_KEEP"
-    # Usuwa duplikaty, oblicza BMI i sortuje bo dacie
+    # Usuwa duplikaty, oblicza BMI i sortuje
 
     patient_data = pd.read_csv(uploaded_file)
     available_columns = [col for col in COLUMNS_TO_KEEP if col in patient_data.columns]
     patient_data = patient_data[available_columns].copy()
 
-    # Sprawdzanie obecności duplikatów
+    # Sprawdza duplikaty
     if "Patient ID" in patient_data.columns:
         patient_data.drop_duplicates(subset=["Patient ID"], keep="first", inplace=True)
         patient_data.reset_index(drop=True, inplace=True)
 
-    # Obliczanie BMI
+    # Oblicza BMI
     if "Weight (kg)" in patient_data.columns and "Height (m)" in patient_data.columns:
         patient_data["BMI"] = (
             patient_data["Weight (kg)"] / (patient_data["Height (m)"] ** 2)
         ).round(1)
 
-    # Dzielenie na grupy wiekowe
+    # Dzieli na grupy wiekowe
     if "Age" in patient_data.columns:
         age_bins = [0, 18, 30, 45, 60, 120]
         age_labels = ["<18", "18-30", "31-45", "46-60", "60+"]
@@ -102,8 +112,8 @@ def compute_stats(patient_data, column_name):
     })
 
 def compute_group_stats(patient_data, numeric_column, grouping_column):
-    # Oblicza statystyki dla pewnych grup (dla każdej oddzielnie)
-    # Skleja je w jedną tabele
+    # Oblicza statystyki dla grup (dla każdej oddzielnie)
+    # Tworzy z nich jedną tabelkę
 
     grouped_result = patient_data.groupby(grouping_column)[numeric_column].agg(
         ["mean", "median", "std", "min", "max", "count"]
@@ -112,14 +122,14 @@ def compute_group_stats(patient_data, numeric_column, grouping_column):
     return grouped_result.reset_index()
 
 def draw_histogram(patient_data, column_name):
-    # Rysuje histogram z rozkładem danych danej kolumny
+    # Rysuje histogram z rozkładem danych dla danej kolumny
 
     figure, axis = plt.subplots(figsize=(8, 4))
     axis.hist(patient_data[column_name].dropna(), bins=30,
               edgecolor="black", alpha=0.7, color="#4C8BF5")
-    axis.set_xlabel(column_name)
+    axis.set_xlabel(polish(column_name))
     axis.set_ylabel("Liczba pacjentów")
-    axis.set_title(f"Histogram – {column_name}")
+    axis.set_title(f"Histogram – {polish(column_name)}")
     figure.tight_layout()
     return figure
 
@@ -132,19 +142,19 @@ def draw_boxplot(patient_data, column_name):
         female_values = patient_data[patient_data["Gender"] == "Female"][column_name].dropna()
         boxplot_result = axis.boxplot(
             [male_values, female_values],
-            labels=["Male", "Female"], patch_artist=True,
+            labels=["Mężczyźni", "Kobiety"], patch_artist=True,
         )
         boxplot_result["boxes"][0].set_facecolor("#4C8BF5")
         boxplot_result["boxes"][1].set_facecolor("#F54C7A")
     else:
         axis.boxplot(patient_data[column_name].dropna(), patch_artist=True)
-    axis.set_ylabel(column_name)
-    axis.set_title(f"Boxplot – {column_name}")
+    axis.set_ylabel(polish(column_name))
+    axis.set_title(f"Boxplot – {polish(column_name)}")
     figure.tight_layout()
     return figure
 
 def draw_scatter(patient_data, x_column, y_column):
-    # Rysuje wykres rozrzutu dwóch kolumn — każdy punkt to pacjent, kolorowany wg płci.
+    # Rysuje wykres rozrzutu dwóch kolumn — każdy punkt to pacjent, kolorowany wg. płci
 
     figure, axis = plt.subplots(figsize=(8, 4))
 
@@ -153,17 +163,17 @@ def draw_scatter(patient_data, x_column, y_column):
         axis.scatter(patient_data[x_column], patient_data[y_column],
                      alpha=0.4, s=12, c=gender_colors)
         male_marker = plt.Line2D([0], [0], marker='o', color='w',
-                                 markerfacecolor='#4C8BF5', label='Male', markersize=8)
+                                 markerfacecolor='#4C8BF5', label='Mężczyźni', markersize=8)
         female_marker = plt.Line2D([0], [0], marker='o', color='w',
-                                   markerfacecolor='#F54C7A', label='Female', markersize=8)
+                                   markerfacecolor='#F54C7A', label='Kobiety', markersize=8)
         axis.legend(handles=[male_marker, female_marker])
     else:
         axis.scatter(patient_data[x_column], patient_data[y_column],
                      alpha=0.4, s=12, color="#4C8BF5")
 
-    axis.set_xlabel(x_column)
-    axis.set_ylabel(y_column)
-    axis.set_title(f"{x_column} vs {y_column}")
+    axis.set_xlabel(polish(x_column))
+    axis.set_ylabel(polish(y_column))
+    axis.set_title(f"{polish(x_column)} vs {polish(y_column)}")
     figure.tight_layout()
     return figure
 
@@ -172,14 +182,15 @@ def draw_gender_pie(patient_data):
 
     figure, axis = plt.subplots(figsize=(6, 4))
     gender_counts = patient_data["Gender"].value_counts()
-    axis.pie(gender_counts, labels=gender_counts.index,
+    polish_labels = [("Mężczyźni" if g == "Male" else "Kobiety") for g in gender_counts.index]
+    axis.pie(gender_counts, labels=polish_labels,
              autopct="%1.1f%%", colors=["#4C8BF5", "#F54C7A"], startangle=90)
     axis.set_title("Rozkład płci")
     figure.tight_layout()
     return figure
 
 def draw_group_comparison(patient_data, grouping_column, value_column):
-    # Rysuje wykres porównawczy miedzy grupami
+    # Rysuje wykres porównujący grupy
 
     figure, axis = plt.subplots(figsize=(8, 4))
     unique_groups = sorted(patient_data[grouping_column].dropna().unique(), key=str)
@@ -194,18 +205,19 @@ def draw_group_comparison(patient_data, grouping_column, value_column):
     for index, box in enumerate(boxplot_result["boxes"]):
         box.set_facecolor(color_palette[index % len(color_palette)])
 
-    axis.set_ylabel(value_column)
-    axis.set_title(f"Porównanie: {value_column} wg {grouping_column}")
+    axis.set_ylabel(polish(value_column))
+    axis.set_title(f"Porównanie: {polish(value_column)} wg {polish(grouping_column)}")
     figure.tight_layout()
     return figure
 
 def save_chart_to_png(figure, filename):
-    # Zapisuje figure matplotlib do png
+    # Zapisuje figure matplotlib do pliku PNG
 
     image_path = os.path.join(tempfile.gettempdir(), filename)
     figure.savefig(image_path, dpi=150)
     plt.close(figure)
     return image_path
+
 
 def generate_pdf(patient_data):
     # Generuje raport pdf z danymi i wykresami
@@ -225,15 +237,18 @@ def generate_pdf(patient_data):
     pdf_elements.append(Paragraph("Raport analizy danych medycznych", pdf_styles["Title"]))
     pdf_elements.append(Paragraph(
         f"Data: {datetime.datetime.now():%Y-%m-%d %H:%M}  |  "
-        f"Rekordów: {len(patient_data)}",
+        f"Rekordow: {len(patient_data)}",
         pdf_styles["Normal"],
     ))
     pdf_elements.append(Spacer(1, 0.5 * cm))
 
     for column_name in get_available_numeric_columns(patient_data):
         stats_result = compute_stats(patient_data, column_name)
-        pdf_elements.append(Paragraph(f"<b>{column_name}</b>", pdf_styles["Heading3"]))
-        table_rows = [["Miara", "Wartość"]] + stats_result.values.tolist()
+        stats_result["Miara"] = stats_result["Miara"].apply(strip_diacritics)
+        pdf_elements.append(Paragraph(
+            f"<b>{strip_diacritics(polish(column_name))}</b>", pdf_styles["Heading3"]
+        ))
+        table_rows = [["Miara", "Wartosc"]] + stats_result.values.tolist()
         stats_table = Table(table_rows, colWidths=[5 * cm, 4 * cm])
         stats_table.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), rl_colors.HexColor("#4C8BF5")),
@@ -246,7 +261,7 @@ def generate_pdf(patient_data):
 
     if "Age" in patient_data.columns:
         image_path = save_chart_to_png(draw_histogram(patient_data, "Age"), "chart_age.png")
-        pdf_elements.append(Paragraph("<b>Rozkład wieku</b>", pdf_styles["Heading3"]))
+        pdf_elements.append(Paragraph("<b>Rozklad wieku</b>", pdf_styles["Heading3"]))
         pdf_elements.append(Image(image_path, width=14 * cm, height=7 * cm))
         pdf_elements.append(Spacer(1, 0.3 * cm))
 
@@ -255,22 +270,21 @@ def generate_pdf(patient_data):
             draw_scatter(patient_data, "Heart Rate", "Systolic Blood Pressure"),
             "chart_hr_bp.png",
         )
-        pdf_elements.append(Paragraph("<b>Tętno vs Ciśnienie skurczowe</b>", pdf_styles["Heading3"]))
+        pdf_elements.append(Paragraph("<b>Tetno vs Cisnienie skurczowe</b>", pdf_styles["Heading3"]))
         pdf_elements.append(Image(image_path, width=14 * cm, height=7 * cm))
         pdf_elements.append(Spacer(1, 0.3 * cm))
 
     if "BMI" in patient_data.columns:
         image_path = save_chart_to_png(draw_boxplot(patient_data, "BMI"), "chart_bmi.png")
-        pdf_elements.append(Paragraph("<b>BMI wg płci</b>", pdf_styles["Heading3"]))
+        pdf_elements.append(Paragraph("<b>BMI wg plci</b>", pdf_styles["Heading3"]))
         pdf_elements.append(Image(image_path, width=14 * cm, height=7 * cm))
 
     pdf_document = SimpleDocTemplate(buffer, pagesize=A4)
     pdf_document.build(pdf_elements)
     return buffer.getvalue()
 
-
 def apply_filters(patient_data, filters):
-    # Filtruje dane według zakresow min max
+    # Filtruje dane według zakresów min i max
 
     for column_name, (min_value, max_value) in filters.items():
         if column_name in patient_data.columns:
@@ -282,7 +296,8 @@ def apply_filters(patient_data, filters):
     return patient_data
 
 def build_sidebar_filters(patient_data):
-    # Buduje panel boczny z filtrami (płeć + suwaki zakresowe) i zwraca przefiltrowane dane.
+    # Buduje panel boczny z filtrami (płeć + suwaki zakresowe dla innych zmiennych)
+    # Wyrzuca przefiltrowane dane
     st.sidebar.header("Filtry")
 
     if "Gender" in patient_data.columns:
@@ -313,13 +328,13 @@ def build_sidebar_filters(patient_data):
 
 
 def show_tab_data(filtered_data):
-    # Wyświetla tabelę z danymi pacjentów.
+    # Wyświetla tabelę z danymi pacjentów
     st.subheader(f"Tabela danych ({len(filtered_data)} rekordów)")
     st.dataframe(filtered_data, use_container_width=True, height=500)
 
 
 def show_tab_stats(filtered_data):
-    # Wyświetla statystyki opisowe i grupowane dla wybranej kolumny.
+    # Wyświetla statystyki opisowe i grupowane dla wybranych parametrów
     available_columns = get_available_numeric_columns(filtered_data)
 
     st.subheader("Statystyki opisowe")
@@ -352,14 +367,12 @@ def show_tab_stats(filtered_data):
         st.warning("Brak kolumn do grupowania (Gender lub Grupa wiekowa).")
 
 def show_tab_charts(filtered_data):
-    # Wyświetla wybrany typ wykresu (histogram, scatter, boxplot, pie, tętno vs ciśnienie).
+    # Wyświetla wybrany typ wykresu (histogram, scatter, boxplot, kołowy)
     available_columns = get_available_numeric_columns(filtered_data)
 
     chart_options = ["Histogram", "Wykres rozrzutu", "Boxplot"]
     if "Gender" in filtered_data.columns:
         chart_options.append("Rozkład płci")
-    if "Heart Rate" in filtered_data.columns and "Systolic Blood Pressure" in filtered_data.columns:
-        chart_options.append("Tętno vs Ciśnienie")
 
     chart_type = st.selectbox("Typ wykresu", chart_options)
 
@@ -383,7 +396,7 @@ def show_tab_charts(filtered_data):
 
 
 def show_tab_compare(filtered_data):
-    # Wyświetla porównanie grup (boxploty obok siebie wg płci lub grupy wiekowej).
+    # Wyświetla porównanie grup (boxploty obok siebie wg. płci lub grupy wiekowej)
     available_columns = get_available_numeric_columns(filtered_data)
 
     grouping_options = []
@@ -407,7 +420,7 @@ def show_tab_compare(filtered_data):
 
 
 def show_tab_export(filtered_data):
-    # Wyświetla przyciski do pobrania danych (CSV) i raportu (PDF).
+    # Wyświetla przyciski do pobrania danych (CSV) i raportu (PDF)
     st.subheader("Eksport danych")
 
     csv_bytes = filtered_data.to_csv(index=False).encode("utf-8")
@@ -431,7 +444,7 @@ def show_tab_export(filtered_data):
 
 
 def main():
-    # Punkt wejścia — konfiguracja strony, upload CSV i przekazanie danych do zakładek.
+    # Punkt wejścia — konfiguracja strony, upload CSV i przekazanie danych do zakładek
     st.set_page_config(page_title="Medical Data Analyzer", layout="wide")
     st.title("Medical Patient Data Analyzer")
 
